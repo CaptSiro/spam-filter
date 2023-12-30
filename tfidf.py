@@ -7,6 +7,10 @@ class WordCounter:
         self.documents = []
         self.matrix = {}
         self.tokenizer = tokenizer
+        self.state_vec = self.tfidf_vec()
+
+    def save_state(self):
+        self.state_vec = self.tfidf_vec()
 
     def scan(self, document: str, is_ok=True) -> dict[str, int]:
         frequencies = {}
@@ -24,6 +28,9 @@ class WordCounter:
                 self.terms[term] = 1
 
         return frequencies
+
+    def __lshift__(self, other):
+        self.documents.append(other)
 
     def vec(self, document: str) -> dict[str, int]:
         frequencies = {}
@@ -60,9 +67,9 @@ if __name__ == "__main__":
     def main():
         tokenizer = HTMLTokenStream()
         counter = WordCounter(tokenizer.stream)
-        counter.documents.append(counter.scan("i love natural language processing but i hate python"))
-        counter.documents.append(counter.scan("i like image processing", False))
-        counter.documents.append(counter.scan("i like signal processing and image processing"))
+        counter << counter.scan("i love natural language processing but i hate python")
+        counter << counter.scan("i like image processing", False)
+        counter << counter.scan("i like signal processing and image processing")
 
         max_len = max([len(token) for token in counter.terms])
         padding = f"%{max_len + 1}s"
