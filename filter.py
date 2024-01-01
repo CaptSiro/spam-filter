@@ -6,6 +6,7 @@ import utils
 from vectorize import Vectorizer
 from tokenize import HTMLTokenStream
 from email_reader import Email
+from header_scan import SenderCounter
 from typing import Iterable, Tuple
 
 
@@ -13,6 +14,7 @@ class MyFilter:
     def __init__(self):
         tokenizer = HTMLTokenStream()
         self.analyzer = tfidf.WordCounter(tokenizer.stream)
+        self.senders = SenderCounter()
 
     @staticmethod
     def is_ok(spec, item):
@@ -30,6 +32,7 @@ class MyFilter:
         spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
         for file, email in corpus.Corpus(directory).parsed_emails():
             self.analyzer << self.analyzer.scan(email.le_contante, MyFilter.is_ok(spec, file))
+            self.senders.load_sender(email.headers, MyFilter.is_ok(spec, file))
 
         self.analyzer.save_state()
 
@@ -44,10 +47,11 @@ class MyFilter:
     def calc(result):
         return 'SPAM' if result < MyFilter.SPAM_THRESHOLD else 'OK'
 
-
+    SENDER_WEIGHT = 0.5
     def predict(self, file, email: "Email") -> str:
         word_freq = MyFilter.scal_mul(self.analyzer.vec(email.le_contante), self.analyzer.state_vec)
         result = word_freq
+        result += self.senders.test_sender(email.headers) * 0.5
         return MyFilter.calc(result)
 
 
