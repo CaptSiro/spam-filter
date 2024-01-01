@@ -7,14 +7,14 @@ import utils
 
 class Vectorizer:
     class Vec:
-        PROP_COUNT = 3
+        PROP_COUNT = 5
         def __init__(self, props):
             self.props = props
             if len(self.props) != self.PROP_COUNT:
                 raise ValueError(f"Props must have {self.PROP_COUNT} items")
 
         def product(self):
-            return abs(sum((math.log10(p) for p in self.props if p != 0)))
+            return sum((math.log10(p) for p in self.props if p != 0))
 
         def __str__(self):
             return str(self.props)
@@ -56,8 +56,12 @@ class Vectorizer:
     def calc(email: email_reader.Email) -> "Vectorizer.Vec":
         content = " ".join(Vectorizer.html_content.extract(email.le_contante))
         capitalised = sum((len(word) for word in tokenize.t(content, lambda w: str(w).upper() == str(w))))
-        # length = len(content)
+        length = len(content)
         links = Vectorizer.link_counter.count(content)
         exclamations = content.count('!')
+        headers = len(email.headers)
 
-        return Vectorizer.Vec([capitalised, links, exclamations])
+        # Vec prop type: int|string
+        # add content type header
+
+        return Vectorizer.Vec([headers, capitalised, length, links, exclamations])

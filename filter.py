@@ -91,7 +91,7 @@ class MyFilterPropAnalysis:
                 pp.write(f"{file} {self.predict(file, email)}\n")
 
 
-    SPAM_THRESHOLD = 0.02
+    SPAM_THRESHOLD = -0.05
     @staticmethod
     def calc(result):
         return 'SPAM' if result < MyFilterPropAnalysis.SPAM_THRESHOLD else 'OK'
@@ -108,16 +108,67 @@ class MyFilterPropAnalysis:
         ok = ok if ok != 0 else 1
         spam = spam if spam != 0 else 1
 
-        result = word_freq
-        before = MyFilter.calc(result)
+        property_analysis = -(math.log10(ok / spam) * 0.14)
 
-        result = word_freq - math.log10(ok / spam)
-        after = MyFilter.calc(result)
+        result = word_freq
+        before = MyFilterPropAnalysis.calc(result)
+
+        result = word_freq + property_analysis
+        after = MyFilterPropAnalysis.calc(result)
 
         # if before != after:
-        #     print("%s\twf=%-8.2f os=%-8.2f = %s" % (file, word_freq, math.log10(ok / spam), after))
+        #     print("%s\t%-8.2f %s %-8.3f = %-8.4f\t%s" % (file, word_freq, '+' if 1 == math.copysign(1, property_analysis) else '-', abs(property_analysis), result, after))
 
         return after
+
+
+
+class MyFilterPropAnalysisOnly:
+    def __init__(self):
+        self.spam_vec = Vectorizer()
+        self.ok_vec = Vectorizer()
+
+    @staticmethod
+    def is_ok(spec, item):
+        if item not in spec:
+            print(f"{item} not in spec")
+            return True
+
+        return spec[item] == "OK"
+
+    @staticmethod
+    def scal_mul(vec_x: dict, vec_y: dict):
+        return sum((vec_x.get(term, 0) * vec_y.get(term, 0) for term in vec_x))
+
+    def train(self, directory):
+        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
+        for file, email in corpus.Corpus(directory).parsed_emails():
+            if MyFilter.is_ok(spec, file):
+                self.ok_vec << Vectorizer.calc(email)
+            else:
+                self.spam_vec << Vectorizer.calc(email)
+
+        self.ok_vec.save_state()
+        self.spam_vec.save_state()
+
+    def test(self, directory):
+        with open(os.path.join(directory, "!prediction.txt"), "w", encoding="utf8") as pp:
+            for file, email in corpus.Corpus(directory).parsed_emails():
+                pp.write(f"{file} {self.predict(file, email)}\n")
+
+
+    SPAM_THRESHOLD = 0.02
+    @staticmethod
+    def calc(result):
+        return 'SPAM' if result < MyFilterPropAnalysisOnly.SPAM_THRESHOLD else 'OK'
+
+
+    def predict(self, file, email: "Email") -> str:
+        email_vec = Vectorizer.calc(email)
+        ok = self.ok_vec.distribute(email_vec).product()
+        spam = self.spam_vec.distribute(email_vec).product()
+
+        return 'SPAM' if spam > ok else 'OK'
 
 
 
