@@ -21,6 +21,69 @@ def get_stopwords():
     return __STOPWORDS__
 
 
+__VOWELS__ = None
+def get_vowels():
+    global __VOWELS__
+    vowels = __VOWELS__
+
+    if vowels is not None:
+        return vowels
+
+    vowels = [False for _ in range(255)]
+    for v in ['e', 'y', 'u', 'i', 'o', 'a']:
+        vowels[ord(v)] = True
+
+    __VOWELS__ = vowels
+    return __VOWELS__
+
+__RATIOS__ = None
+def get_ratios():
+    global __RATIOS__
+    ratios = __RATIOS__
+
+    if ratios is not None:
+        return ratios
+
+    ratios = {}
+    with open("vc_ratios.txt", "r", encoding="utf-8") as r:
+        for line in r.readlines():
+            length, *values = [int(s) for s in line.strip().split()]
+            ratios[length] = values
+
+    __RATIOS__ = ratios
+    return __RATIOS__
+
+LONGEST_VOWEL_SEQUENCE = 8
+LONGEST_CONSONANTS_SEQUENCE = 12
+def is_nonsense(word: str) -> bool:
+    ratios = get_ratios()
+
+    if len(word) not in ratios:
+        return True
+
+    vowels = get_vowels()
+    v = 0
+    c = 0
+    seq_v = 0
+    seq_c = 0
+
+    for char in word:
+        if vowels[ord(char)]:
+            v += 1
+            seq_v += 1
+            seq_c = 0
+        else:
+            c += 1
+            seq_c += 1
+            seq_v = 1
+
+        if seq_v > LONGEST_VOWEL_SEQUENCE or seq_c > LONGEST_CONSONANTS_SEQUENCE:
+            return True
+
+    vmin, vmax, cmin, cmax = ratios[len(word)]
+    return not (vmin <= v <= vmax and cmin <= c <= cmax)
+
+
 def tokenize_word(content: str, index, length):
     word = ""
 
@@ -28,7 +91,7 @@ def tokenize_word(content: str, index, length):
         if not index < length:
             break
 
-        if not content[index].isalpha() and content[index] != '-':
+        if not content[index].isalpha() and content[index] != '-' and content[index] != "'":
             break
 
         word += content[index]
