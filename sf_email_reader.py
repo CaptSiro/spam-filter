@@ -1,7 +1,3 @@
-import email
-from email.parser import Parser
-
-
 class Email:
     def __init__(self, le_contante, headers):
         self.le_contante = le_contante

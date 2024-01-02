@@ -1,7 +1,7 @@
 import math
 import re
-import email_reader
-import tokenize
+from sf_email_reader import Email
+import sf_token
 import utils
 
 
@@ -19,8 +19,8 @@ class Vectorizer:
         def __str__(self):
             return str(self.props)
 
-    html_content = tokenize.HTMLContent()
-    link_counter = tokenize.HTMLLinkCounter()
+    html_content = sf_token.HTMLContent()
+    link_counter = sf_token.HTMLLinkCounter()
     price_re = re.compile(r"($[0-9,]+)")
 
     def __init__(self):
@@ -53,9 +53,9 @@ class Vectorizer:
         return Vectorizer.Vec([utils.normal_dist(self.avg.props[i], self.stddev.props[i], vec.props[i]) for i in range(Vectorizer.Vec.PROP_COUNT)])
 
     @staticmethod
-    def calc(email: email_reader.Email) -> "Vectorizer.Vec":
+    def calc(email: Email) -> "Vectorizer.Vec":
         content = " ".join(Vectorizer.html_content.extract(email.le_contante))
-        capitalised = sum((len(word) for word in tokenize.t(content, lambda w: str(w).upper() == str(w))))
+        capitalised = sum((len(word) for word in sf_token.t(content, lambda w: str(w).upper() == str(w))))
         length = len(content)
         links = Vectorizer.link_counter.count(content)
         exclamations = content.count('!')
