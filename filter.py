@@ -1,6 +1,6 @@
 import math
 import os.path
-import sf_corpus
+from sf_corpus import Corpus
 import sf_tfidf
 import utils
 from sf_vectorize import Vectorizer
@@ -11,6 +11,12 @@ from sf_header_scan import SenderCounter
 
 
 class MyFilter:
+    KEY_WORD_FREQ = "word-frequency"
+    KEY_SENDERS = "senders"
+    KEY_PROP_ANALYSIS = "property-analysis"
+    KEY_RESULT = "result"
+    SPAM_THRESHOLD = -0.04
+
     def __init__(self):
         tokenizer = HTMLTokenStream()
         self.analyzer = sf_tfidf.WordCounter(tokenizer.stream)
@@ -18,6 +24,12 @@ class MyFilter:
         self.spam_vec = Vectorizer()
         self.ok_vec = Vectorizer()
 
+        self.weights = {
+            MyFilter.KEY_WORD_FREQ: 1,
+            MyFilter.KEY_SENDERS: 0.5,
+            MyFilter.KEY_PROP_ANALYSIS: 0.14
+        }
+
     @staticmethod
     def is_ok(spec, item):
         if item not in spec:
@@ -30,18 +42,95 @@ class MyFilter:
     def scal_mul(vec_x: dict, vec_y: dict):
         return sum((vec_x.get(term, 0) * vec_y.get(term, 0) for term in vec_x))
 
-    def train(self, directory):
-        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
-        for file, email in sf_corpus.Corpus(directory).parsed_emails():
+    def save_email(self, email, is_ok, weight=1):
+        self.analyzer << self.analyzer.scan(email.le_contante, is_ok, weight=weight)
+        self.senders.load_sender(email.headers, is_ok, weight)
+
+        if is_ok:
+            self.ok_vec << Vectorizer.calc(email, weight)
+        else:
+            self.spam_vec << Vectorizer.calc(email, weight)
+
+    @staticmethod
+    def adjust_instance(score: float):
+        return 1 + abs(score) * 0.35
+
+    def adjust_group(self, group: str, score: float, is_reward: bool):
+        if is_reward:
+            self.weights[group] += abs(score) * 0.1 * self.weights[group]
+        else:
+            self.weights[group] -= abs(score) * 0.18 * self.weights[group]
+
+    def create_adjustment(self, values, expected):
+        def perform(group, save_item):
+            score = values[group]
+            if MyFilter.calc(score, 0) != expected:
+                save_item(MyFilter.adjust_instance(score))
+                self.adjust_group(group, score, False)
+            else:
+                save_item(1)
+                self.adjust_group(group, score, True)
+
+        return perform
+
+    def validate_training(self, corpus, validation, spec):
+        correct = 0
+
+        self.analyzer.save_state()
+        self.ok_vec.save_state()
+        self.spam_vec.save_state()
+
+        for file, email in corpus.parse_partition(validation):
+            prediction, values = self.predict(file, email)
+
             is_ok = MyFilter.is_ok(spec, file)
+            expected = spec[file]
 
-            self.analyzer << self.analyzer.scan(email.le_contante, is_ok)
-            self.senders.load_sender(email.headers, is_ok)
+            if prediction == expected:
+                self.save_email(email, is_ok)
+                correct += 1
+                continue
 
-            if is_ok:
-                self.ok_vec << Vectorizer.calc(email)
-            else:
-                self.spam_vec << Vectorizer.calc(email)
+            adjust = self.create_adjustment(values, expected)
+            adjust(
+                MyFilter.KEY_WORD_FREQ,
+                lambda w: self.analyzer << self.analyzer.scan(email.le_contante, is_ok, w)
+            )
+
+            adjust(
+                MyFilter.KEY_SENDERS,
+                lambda w: self.senders.load_sender(email.headers, is_ok, w)
+            )
+
+            def adjust_prop_analysis(weight):
+                if is_ok:
+                    self.ok_vec << Vectorizer.calc(email, weight)
+                else:
+                    self.spam_vec << Vectorizer.calc(email, weight)
+
+            adjust(
+                MyFilter.KEY_PROP_ANALYSIS,
+                adjust_prop_analysis
+            )
+
+        return correct / len(validation)
+
+    def train(self, directory):
+        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
+        corpus = Corpus(directory)
+
+        training, validation = corpus.partitions()
+        for file, email in corpus.parse_partition(training):
+            is_ok = MyFilter.is_ok(spec, file)
+            self.save_email(email, is_ok)
+
+        for _ in range(10):
+            percentage = self.validate_training(corpus, validation, spec)
+            print(percentage)
+            if percentage > 0.96:
+                break
+
+        print(self.weights)
 
     def test(self, directory):
         self.analyzer.save_state()
@@ -49,183 +138,38 @@ class MyFilter:
         self.spam_vec.save_state()
 
         with open(os.path.join(directory, "!prediction.txt"), "w", encoding="utf-8") as pp:
-            for file, email in sf_corpus.Corpus(directory).parsed_emails():
-                pp.write(f"{file} {self.predict(file, email)}\n")
+            for file, email in Corpus(directory).parsed_emails():
+                prediction, _ = self.predict(file, email)
+                pp.write(f"{file} {prediction}\n")
 
 
-    SPAM_THRESHOLD = -0.05
     @staticmethod
-    def calc(result):
-        return 'SPAM' if result < MyFilter.SPAM_THRESHOLD else 'OK'
+    def calc(result, threshold=None):
+        if threshold is None:
+            return 'SPAM' if result < MyFilter.SPAM_THRESHOLD else 'OK'
 
-    SENDER_WEIGHT = 0.5
-    PROPERTY_ANALYSIS_WEIGHT = 0.14
-    def predict(self, file, email: "Email") -> str:
-        word_freq = MyFilter.scal_mul(self.analyzer.vec(email.le_contante), self.analyzer.state_vec)
-        result = word_freq
+        return 'SPAM' if result < threshold else 'OK'
 
-        result += self.senders.test_sender(email.headers) * MyFilter.SENDER_WEIGHT
-        print(self.senders.test_sender(email.headers))
+    def predict(self, file, email: "Email") -> (str, dict[str, float]):
+        word_freq = MyFilter.scal_mul(self.analyzer.vec(email.le_contante), self.analyzer.state_vec) \
+                    * self.weights[MyFilter.KEY_WORD_FREQ]
+
+        senders = self.senders.test_sender(email.headers) \
+                  * self.weights[MyFilter.KEY_SENDERS]
 
         email_vec = Vectorizer.calc(email)
-        ok = self.ok_vec.distribute(email_vec).product()
-        spam = self.spam_vec.distribute(email_vec).product()
+        ok = self.ok_vec.distribute(email_vec).sumlog()
+        spam = self.spam_vec.distribute(email_vec).sumlog()
         # division by 0
         ok = ok if ok != 0 else 1
         spam = spam if spam != 0 else 1
-        result += -(math.log10(ok / spam) * MyFilter.PROPERTY_ANALYSIS_WEIGHT)
+        prop_analysis = -(math.log10(ok / spam)) * self.weights[MyFilter.KEY_PROP_ANALYSIS]
 
-        return MyFilter.calc(result)
+        result = word_freq + senders + prop_analysis
 
-
-
-class MyFilterPropAnalysis:
-    def __init__(self):
-        tokenizer = HTMLTokenStream()
-        self.analyzer = sf_tfidf.WordCounter(tokenizer.stream)
-        self.spam_vec = Vectorizer()
-        self.ok_vec = Vectorizer()
-
-    @staticmethod
-    def is_ok(spec, item):
-        if item not in spec:
-            print(f"{item} not in spec")
-            return True
-
-        return spec[item] == "OK"
-
-    @staticmethod
-    def scal_mul(vec_x: dict, vec_y: dict):
-        return sum((vec_x.get(term, 0) * vec_y.get(term, 0) for term in vec_x))
-
-    def train(self, directory):
-        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
-        for file, email in sf_corpus.Corpus(directory).parsed_emails():
-            self.analyzer << self.analyzer.scan(email.le_contante, MyFilter.is_ok(spec, file))
-
-            if MyFilter.is_ok(spec, file):
-                self.ok_vec << Vectorizer.calc(email)
-            else:
-                self.spam_vec << Vectorizer.calc(email)
-
-        self.analyzer.save_state()
-        self.ok_vec.save_state()
-        self.spam_vec.save_state()
-
-    def test(self, directory):
-        with open(os.path.join(directory, "!prediction.txt"), "w", encoding="utf-8") as pp:
-            for file, email in sf_corpus.Corpus(directory).parsed_emails():
-                pp.write(f"{file} {self.predict(file, email)}\n")
-
-
-    SPAM_THRESHOLD = -0.05
-    @staticmethod
-    def calc(result):
-        return 'SPAM' if result < MyFilterPropAnalysis.SPAM_THRESHOLD else 'OK'
-
-
-    def predict(self, file, email: "Email") -> str:
-        word_freq = MyFilter.scal_mul(self.analyzer.vec(email.le_contante), self.analyzer.state_vec)
-
-        email_vec = Vectorizer.calc(email)
-        ok = self.ok_vec.distribute(email_vec).product()
-        spam = self.spam_vec.distribute(email_vec).product()
-
-        # division by 0
-        ok = ok if ok != 0 else 1
-        spam = spam if spam != 0 else 1
-
-        property_analysis = -(math.log10(ok / spam) * 0.14)
-
-        result = word_freq
-        before = MyFilterPropAnalysis.calc(result)
-
-        result = word_freq + property_analysis
-        after = MyFilterPropAnalysis.calc(result)
-
-        # if before != after:
-        #     print("%s\t%-8.2f %s %-8.3f = %-8.4f\t%s" % (file, word_freq, '+' if 1 == math.copysign(1, property_analysis) else '-', abs(property_analysis), result, after))
-
-        return after
-
-
-
-class MyFilterPropAnalysisOnly:
-    def __init__(self):
-        self.spam_vec = Vectorizer()
-        self.ok_vec = Vectorizer()
-
-    @staticmethod
-    def is_ok(spec, item):
-        if item not in spec:
-            print(f"{item} not in spec")
-            return True
-
-        return spec[item] == "OK"
-
-    @staticmethod
-    def scal_mul(vec_x: dict, vec_y: dict):
-        return sum((vec_x.get(term, 0) * vec_y.get(term, 0) for term in vec_x))
-
-    def train(self, directory):
-        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
-        for file, email in sf_corpus.Corpus(directory).parsed_emails():
-            if MyFilter.is_ok(spec, file):
-                self.ok_vec << Vectorizer.calc(email)
-            else:
-                self.spam_vec << Vectorizer.calc(email)
-
-        self.ok_vec.save_state()
-        self.spam_vec.save_state()
-
-    def test(self, directory):
-        with open(os.path.join(directory, "!prediction.txt"), "w", encoding="utf-8") as pp:
-            for file, email in sf_corpus.Corpus(directory).parsed_emails():
-                pp.write(f"{file} {self.predict(file, email)}\n")
-
-
-    SPAM_THRESHOLD = 0.02
-    @staticmethod
-    def calc(result):
-        return 'SPAM' if result < MyFilterPropAnalysisOnly.SPAM_THRESHOLD else 'OK'
-
-
-    def predict(self, file, email: "Email") -> str:
-        email_vec = Vectorizer.calc(email)
-        ok = self.ok_vec.distribute(email_vec).product()
-        spam = self.spam_vec.distribute(email_vec).product()
-
-        return 'SPAM' if spam > ok else 'OK'
-
-
-
-class NaiveBayesFilter:
-    def __init__(self):
-        tokenizer = HTMLTokenStream()
-        self.spam = sf_tfidf.WordCounter(tokenizer.stream)
-        self.ok = sf_tfidf.WordCounter(tokenizer.stream)
-
-
-    def train(self, directory):
-        spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
-        for file, email in sf_corpus.Corpus(directory).parsed_emails():
-            if MyFilter.is_ok(spec, file):
-                self.ok << self.ok.scan(email.le_contante)
-            else:
-                self.spam << self.spam.scan(email.le_contante)
-
-        self.ok.save_state()
-        self.spam.save_state()
-
-
-    def test(self, directory):
-        with open(os.path.join(directory, "!prediction.txt"), "w", encoding="utf-8") as pp:
-            for file, email in sf_corpus.Corpus(directory).parsed_emails():
-                pp.write(f"{file} {self.predict(email)}\n")
-
-
-    def predict(self, email: Email):
-        result_ok = MyFilter.scal_mul(self.ok.vec(email.le_contante), self.ok.state_vec)
-        result_spam = MyFilter.scal_mul(self.spam.vec(email.le_contante), self.spam.state_vec)
-
-        return 'SPAM' if result_spam > result_ok else 'OK'
+        return MyFilter.calc(result), {
+            MyFilter.KEY_WORD_FREQ: word_freq,
+            MyFilter.KEY_SENDERS: senders,
+            MyFilter.KEY_PROP_ANALYSIS: prop_analysis,
+            MyFilter.KEY_RESULT: result
+        }

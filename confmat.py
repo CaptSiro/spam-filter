@@ -4,6 +4,15 @@ class BinaryConfusionMatrix:
         self.neg_tag = neg_tag
         self.matrix = [[0, 0], [0, 0]]
 
+    def __str__(self):
+        d = self.as_dict()
+        s = ""
+
+        for key in d:
+            s += f"{key.upper()}: {d[key]}\n"
+
+        return s
+
     def hash(self, tag):
         if tag == self.pos_tag:
             return 0

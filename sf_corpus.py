@@ -20,10 +20,16 @@ class Corpus:
                 with open(os.path.join(self.path, file), "r", encoding="utf-8") as fp:
                     yield file, Email.from_file(fp)
 
-    def partitions(self):
+    def partitions(self) -> list[list[str]]:
         files = [f for f in os.listdir(self.path) if f[0] != '!']
-        split_at = len(files)
-        return []
+        split_at = len(files) // 5
+        return [files[split_at:], files[:split_at]]
+
+    def parse_partition(self, partition: list[str]):
+        for file in partition:
+            if file[0] != '!':
+                with open(os.path.join(self.path, file), "r", encoding="utf-8") as fp:
+                    yield file, Email.from_file(fp)
 
     @staticmethod
     def copy_file_slice(partition, directory):

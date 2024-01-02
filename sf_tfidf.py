@@ -12,20 +12,20 @@ class WordCounter:
     def save_state(self):
         self.state_vec = self.tfidf_vec()
 
-    def scan(self, document: str, is_ok=True) -> dict[str, int]:
+    def scan(self, document: str, is_ok=True, weight=1) -> dict[str, int]:
         frequencies = {}
 
         for token in self.tokenizer(document):
             if frequencies.get(token) is None:
-                frequencies[token] = 1 if is_ok else -1
+                frequencies[token] = weight if is_ok else -weight
             else:
-                frequencies[token] += 1 if is_ok else -1
+                frequencies[token] += weight if is_ok else -weight
 
         for term in frequencies:
             if term in self.terms:
-                self.terms[term] += 1
+                self.terms[term] += weight
             else:
-                self.terms[term] = 1
+                self.terms[term] = weight
 
         return frequencies
 

@@ -7,13 +7,13 @@ class SenderCounter:
         # [appearance_count, score]
         self.appearances = {}
 
-    def load_sender(self, headers_dict, is_ok):
+    def load_sender(self, headers_dict, is_ok, weight=1):
         sender_address = SenderCounter.find_mail(headers_dict)
         if sender_address not in self.appearances:
             self.appearances[sender_address] = [1, 0]
         else:
             self.appearances[sender_address][0] += 1
-        self.appearances[sender_address][1] += 1 if is_ok else -1
+        self.appearances[sender_address][1] += weight if is_ok else -weight
 
     def result(self):
         result = {}

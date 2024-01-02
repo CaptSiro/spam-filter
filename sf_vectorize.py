@@ -8,12 +8,13 @@ import utils
 class Vectorizer:
     class Vec:
         PROP_COUNT = 5
-        def __init__(self, props):
+        def __init__(self, props, weight):
             self.props = props
+            self.weight = weight
             if len(self.props) != self.PROP_COUNT:
                 raise ValueError(f"Props must have {self.PROP_COUNT} items")
 
-        def product(self):
+        def sumlog(self):
             return sum((math.log10(p) for p in self.props if p != 0))
 
         def __str__(self):
@@ -37,23 +38,24 @@ class Vectorizer:
 
     def avg_vec(self) -> "Vectorizer.Vec":
         if len(self.vectors) == 0:
-            return Vectorizer.Vec([0 for _ in range(Vectorizer.Vec.PROP_COUNT)])
+            return Vectorizer.Vec([0 for _ in range(Vectorizer.Vec.PROP_COUNT)], 1)
 
         sums = [sum((self.vectors[r].props[i]) for r in range(len(self.vectors))) for i in range(Vectorizer.Vec.PROP_COUNT)]
-        return Vectorizer.Vec([sums[i] / len(self.vectors) for i in range(Vectorizer.Vec.PROP_COUNT)])
+        weight_sum = sum((v.weight for v in self.vectors))
+        return Vectorizer.Vec([sums[i] / weight_sum for i in range(Vectorizer.Vec.PROP_COUNT)], 1)
 
     def stddev_vec(self, avg_vec: "Vectorizer.Vec") -> "Vectorizer.Vec":
         if len(self.vectors) == 0:
-            return Vectorizer.Vec([0 for _ in range(Vectorizer.Vec.PROP_COUNT)])
+            return Vectorizer.Vec([0 for _ in range(Vectorizer.Vec.PROP_COUNT)], 1)
 
         sums = [sum(((self.vectors[r].props[i] - avg_vec.props[i]) ** 2 for r in range(len(self.vectors)))) for i in range(Vectorizer.Vec.PROP_COUNT)]
-        return Vectorizer.Vec([(sums[i] / len(self.vectors)) ** 0.5 for i in range(Vectorizer.Vec.PROP_COUNT)])
+        return Vectorizer.Vec([(sums[i] / len(self.vectors)) ** 0.5 for i in range(Vectorizer.Vec.PROP_COUNT)], 1)
 
     def distribute(self, vec: "Vectorizer.Vec") -> "Vectorizer.Vec":
-        return Vectorizer.Vec([utils.normal_dist(self.avg.props[i], self.stddev.props[i], vec.props[i]) for i in range(Vectorizer.Vec.PROP_COUNT)])
+        return Vectorizer.Vec([utils.normal_dist(self.avg.props[i], self.stddev.props[i], vec.props[i]) for i in range(Vectorizer.Vec.PROP_COUNT)], 1)
 
     @staticmethod
-    def calc(email: Email) -> "Vectorizer.Vec":
+    def calc(email: Email, weight=1) -> "Vectorizer.Vec":
         content = " ".join(Vectorizer.html_content.extract(email.le_contante))
         capitalised = sum((len(word) for word in sf_token.t(content, lambda w: str(w).upper() == str(w))))
         length = len(content)
@@ -61,7 +63,4 @@ class Vectorizer:
         exclamations = content.count('!')
         headers = len(email.headers)
 
-        # Vec prop type: int|string
-        # add content type header
-
-        return Vectorizer.Vec([headers, capitalised, length, links, exclamations])
+        return Vectorizer.Vec([headers, capitalised, length, links, exclamations], weight)
