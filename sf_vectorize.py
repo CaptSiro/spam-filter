@@ -7,7 +7,7 @@ import utils
 
 class Vectorizer:
     class Vec:
-        PROP_COUNT = 5
+        PROP_COUNT = 7
         def __init__(self, props, weight):
             self.props = props
             self.weight = weight
@@ -57,10 +57,12 @@ class Vectorizer:
     @staticmethod
     def calc(email: Email, weight=1) -> "Vectorizer.Vec":
         content = " ".join(Vectorizer.html_content.extract(email.le_contante))
-        capitalised = sum((len(word) for word in sf_token.t(content, lambda w: str(w).upper() == str(w))))
+        capitalised = sum((1 for _ in sf_token.t(content, lambda w: str(w).upper() == str(w))))
+        nonsense = sum(1 for _ in sf_token.t(content, lambda w: sf_token.is_nonsense(w)))
+        non_ascii = sum(1 for char in content if ord(char) > 255)
         length = len(content)
         links = Vectorizer.link_counter.count(content)
         exclamations = content.count('!')
         headers = len(email.headers)
 
-        return Vectorizer.Vec([headers, capitalised, length, links, exclamations], weight)
+        return Vectorizer.Vec([headers, capitalised, non_ascii, nonsense, length, links, exclamations], weight)

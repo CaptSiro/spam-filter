@@ -68,7 +68,7 @@ def is_nonsense(word: str) -> bool:
     seq_c = 0
 
     for char in word:
-        if vowels[ord(char)]:
+        if len(vowels) > ord(char) and vowels[ord(char)]:
             v += 1
             seq_v += 1
             seq_c = 0
@@ -91,7 +91,7 @@ def tokenize_word(content: str, index, length):
         if not index < length:
             break
 
-        if not content[index].isalpha() and content[index] != '-' and content[index] != "'":
+        if not content[index].isalpha() and content[index] != "'":
             break
 
         word += content[index]
