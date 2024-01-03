@@ -34,7 +34,8 @@ class WordCounter:
         frequencies = UniqueCounter()
 
         for token in self.tokenize(string):
-            frequencies.scan(token)
+            if not sf_token.is_nonsense(token):
+                frequencies.scan(token)
 
         return frequencies
 
@@ -53,37 +54,40 @@ class WordCounter:
 
 
 if __name__ == "__main__":
-    tokenizer = sf_token.HTMLTokenStream()
-    dataset = set()
-    spam = WordCounter(tokenizer.stream, dataset)
-    ok = WordCounter(tokenizer.stream, dataset)
+    def main():
+        tokenizer = sf_token.HTMLTokenStream()
+        dataset = set()
+        spam = WordCounter(tokenizer.stream, dataset)
+        ok = WordCounter(tokenizer.stream, dataset)
 
-    spam << spam.scan("dear friend money")
-    spam << spam.scan("dear money")
-    spam << spam.scan("money")
-    spam << spam.scan("money")
+        spam << spam.scan("dear friend money")
+        spam << spam.scan("dear money")
+        spam << spam.scan("money")
+        spam << spam.scan("money")
 
-    ok << ok.scan("dear friend lunch money")
-    ok << ok.scan("dear friend lunch")
-    ok << ok.scan("dear friend lunch")
-    ok << ok.scan("dear friend")
-    ok << ok.scan("dear friend")
-    ok << ok.scan("dear")
-    ok << ok.scan("dear")
-    ok << ok.scan("dear")
+        ok << ok.scan("dear friend lunch money")
+        ok << ok.scan("dear friend lunch")
+        ok << ok.scan("dear friend lunch")
+        ok << ok.scan("dear friend")
+        ok << ok.scan("dear friend")
+        ok << ok.scan("dear")
+        ok << ok.scan("dear")
+        ok << ok.scan("dear")
 
-    # print(spam.words.map, len(spam.dataset), spam.words.total)
-    # print(ok.words.map, len(spam.dataset), ok.words.total)
+        # print(spam.words.map, len(spam.dataset), spam.words.total)
+        # print(ok.words.map, len(spam.dataset), ok.words.total)
 
-    total = spam.scanned + ok.scanned
+        total = spam.scanned + ok.scanned
 
-    # print(f"p(N|dear) = {math.pow(10, ok.probability(dear))}")
-    # print(f"p(S|dear) = {math.pow(10, spam.probability(dear))}")
-    # print(f"p(N|friend) = {math.pow(10, ok.probability(friend))}")
-    # print(f"p(S|friend) = {math.pow(10, spam.probability(friend))}")
+        # print(f"p(N|dear) = {math.pow(10, ok.probability(dear))}")
+        # print(f"p(S|dear) = {math.pow(10, spam.probability(dear))}")
+        # print(f"p(N|friend) = {math.pow(10, ok.probability(friend))}")
+        # print(f"p(S|friend) = {math.pow(10, spam.probability(friend))}")
 
-    test = spam.scan("lunch money money money money")
-    print("%-8.6f" % math.pow(10, math.log10(ok.scanned / total) + ok.probability(test)))
-    # print("%-8.5f" % math.pow(10, ok.probability(test)))
-    print("%-8.6f" % math.pow(10, math.log10(spam.scanned / total) + spam.probability(test)))
-    # print("%-8.5f" % math.pow(10, spam.probability(test)))
+        test = spam.scan("lunch money money money money")
+        print("%-8.6f" % math.pow(10, math.log10(ok.scanned / total) + ok.probability(test)))
+        # print("%-8.5f" % math.pow(10, ok.probability(test)))
+        print("%-8.6f" % math.pow(10, math.log10(spam.scanned / total) + spam.probability(test)))
+        # print("%-8.5f" % math.pow(10, spam.probability(test)))
+
+    main()
