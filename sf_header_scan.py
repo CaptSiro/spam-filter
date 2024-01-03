@@ -28,7 +28,7 @@ class SenderCounter:
 
     @staticmethod
     def find_mail(headers_dict):
-        sender_address = re.search(r'(([\w.?+-]+)|([\w.?+-]*"[\w.?@+-]+"[\w.?+-]*))@(([\w-]+\.[\w.-]+)|(\[[0-9]+]))', headers_dict["From"])
+        sender_address = re.search(r'(([\w.?+-]+)|([\w.?+-]*"[\w.?@+-]+"[\w.?+-]*))@(([\w-]+\.[\w.-]+)|(\[[0-9]+]))', headers_dict["from"])
 
         if sender_address is None:
             return None

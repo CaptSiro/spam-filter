@@ -1,5 +1,6 @@
 class Email:
-    def __init__(self, le_contante, headers):
+    def __init__(self, file_name, le_contante, headers):
+        self.file = file_name
         self.le_contante = le_contante
         self.headers = headers
 
@@ -15,9 +16,9 @@ class Email:
                 headers[previous_key] += line.strip()
                 continue
             parts = line.split(': ', 1)
-            headers[parts[0]] = parts[1].strip()
-            previous_key = parts[0]
-        return Email(file.read().strip(), headers)
+            headers[parts[0].lower()] = parts[1].strip()
+            previous_key = parts[0].lower()
+        return Email(file.name, file.read().strip(), headers)
 
 
 if __name__ == "__main__":
