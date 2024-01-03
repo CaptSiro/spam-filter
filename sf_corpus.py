@@ -22,7 +22,7 @@ class Corpus:
 
     def partitions(self) -> list[list[str]]:
         files = [f for f in os.listdir(self.path) if f[0] != '!']
-        split_at = len(files) // 5
+        split_at = len(files) // 10
         return [files[split_at:], files[:split_at]]
 
     def parse_partition(self, partition: list[str]):

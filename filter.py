@@ -177,6 +177,8 @@ class MyFilter:
 
 
 class BayesFilter:
+    OK = 0
+    SPAM = 1
     KEY_WORD_FREQ = "word-frequency"
     KEY_SENDERS = "senders"
     KEY_SUBJECT = "subject"
@@ -190,20 +192,25 @@ class BayesFilter:
         dataset_content = set()
         self.analyzer_ok = sf_counter.WordCounter(tokenizer.stream, dataset_content)
         self.analyzer_spam = sf_counter.WordCounter(tokenizer.stream, dataset_content)
+
         dataset_subject = set()
         self.subject_ok = sf_counter.WordCounter(tokenizer.stream, dataset_subject)
         self.subject_spam = sf_counter.WordCounter(tokenizer.stream, dataset_subject)
 
         self.senders_ok = SenderCounter()
         self.senders_spam = SenderCounter()
+
         self.vec_spam = Vectorizer()
         self.vec_ok = Vectorizer()
+
         self.types = sf_counter.UniqueCounter()
 
         self.weights = {
-            BayesFilter.KEY_WORD_FREQ: (1, 1),
-            BayesFilter.KEY_SENDERS: (0.5, 0,5),
-            BayesFilter.KEY_PROP_ANALYSIS: (0.14, 0.14)
+            BayesFilter.KEY_WORD_FREQ: [1, 1],
+            BayesFilter.KEY_SUBJECT: [1, 1],
+            BayesFilter.KEY_SENDERS: [1, 1],
+            BayesFilter.KEY_PROP_ANALYSIS: [1, 1],
+            BayesFilter.KEY_RESULT: [1, 1]
         }
 
     def save_state(self):
@@ -234,25 +241,17 @@ class BayesFilter:
             self.analyzer_spam << self.analyzer_spam.scan(email.le_contante)
             self.senders_spam.load_sender(email.headers, True, weight)
 
-    @staticmethod
-    def adjust_instance(score: float):
-        return 1 + abs(score) * 0.35
-
-    def adjust_group(self, group: str, score: float, is_reward: bool):
-        if is_reward:
-            self.weights[group] += abs(score) * 0.1 * self.weights[group]
-        else:
-            self.weights[group] -= abs(score) * 0.18 * self.weights[group]
-
-    def create_adjustment(self, values, expected):
-        def perform(group, save_item):
-            score = values[group]
-            if BayesFilter.calc(score, 0) != expected:
-                save_item(BayesFilter.adjust_instance(score))
-                self.adjust_group(group, score, False)
-            else:
-                save_item(1)
-                self.adjust_group(group, score, True)
+    REWARD = 1.001
+    PUNISHMENT = 0.998
+    def adjust_weights(self, values: dict, expected: str):
+        def perform(group):
+            p_ok, p_spam = values[group]
+            if p_spam > p_ok and expected != "SPAM":
+                self.weights[group][BayesFilter.OK] *= BayesFilter.REWARD
+                self.weights[group][BayesFilter.SPAM] *= BayesFilter.PUNISHMENT
+            elif p_ok > p_spam and expected != "OK":
+                self.weights[group][BayesFilter.OK] *= BayesFilter.PUNISHMENT
+                self.weights[group][BayesFilter.SPAM] *= BayesFilter.REWARD
 
         return perform
 
@@ -265,45 +264,19 @@ class BayesFilter:
 
             is_ok = BayesFilter.is_ok(spec, file)
             expected = spec[file]
+            self.save_email(email, is_ok)
 
             if prediction == expected:
-                self.save_email(email, is_ok)
                 correct += 1
                 continue
 
-            def adjust_split(ok, spam):
-                def perform(weight):
-                    if is_ok:
-                        ok(weight)
-                    else:
-                        spam(weight)
+            adjust = self.adjust_weights(values, expected)
 
-                return perform
-
-            adjust = self.create_adjustment(values, expected)
-            adjust(
-                BayesFilter.KEY_WORD_FREQ,
-                adjust_split(
-                    lambda w: self.analyzer_ok << self.analyzer_ok.scan(email.le_contante, True, w),
-                    lambda w: self.analyzer_spam << self.analyzer_spam.scan(email.le_contante, True, w),
-                )
-            )
-
-            adjust(
-                BayesFilter.KEY_SENDERS,
-                adjust_split(
-                    lambda w: self.senders_ok.load_sender(email.headers, True, w),
-                    lambda w: self.senders_spam.load_sender(email.headers, True, w),
-                )
-            )
-
-            adjust(
-                BayesFilter.KEY_PROP_ANALYSIS,
-                adjust_split(
-                    lambda w: self.vec_ok << Vectorizer.calc(email, w),
-                    lambda w: self.vec_spam << Vectorizer.calc(email, w),
-                )
-            )
+            # adjust(BayesFilter.KEY_RESULT)
+            adjust(BayesFilter.KEY_WORD_FREQ)
+            adjust(BayesFilter.KEY_SUBJECT)
+            adjust(BayesFilter.KEY_SENDERS)
+            adjust(BayesFilter.KEY_PROP_ANALYSIS)
 
         return correct / len(validation)
 
@@ -330,16 +303,17 @@ class BayesFilter:
             self.save_email(email, is_ok)
             self.types.scan(spec[file])
 
-        self.save_state()
-        for file, email in corpus.parse_partition(validation):
-            # print(file)
-            prediction, values = self.predict(file, email)
-            # self.print_predict_parts(values)
+        # for file, email in corpus.parse_partition(validation):
+        #     # print(file)
+        #     prediction, values = self.predict(file, email)
+        #     # self.print_predict_parts(values)
 
-        # for _ in range(10):
-        #     percentage = self.validate_training(corpus, validation, spec)
-        #     if percentage > 0.96:
-        #         break
+        for _ in range(10):
+            percentage = self.validate_training(corpus, validation, spec)
+            print(percentage)
+            print(self.weights)
+            if percentage > 0.98:
+                break
 
     def test(self, directory):
         self.save_state()
@@ -362,24 +336,34 @@ class BayesFilter:
 
         document = self.analyzer_ok.scan(email.le_contante)
 
-        p_wf_ok = -math.pow(abs(self.analyzer_ok.probability(document)), 0.9)
-        p_wf_spam = -math.pow(abs(self.analyzer_spam.probability(document)), 0.9)
+        p_wf_ok = (-math.pow(abs(self.analyzer_ok.probability(document)), 0.9)
+                   * self.weights[BayesFilter.KEY_WORD_FREQ][BayesFilter.OK])
+        p_wf_spam = (-math.pow(abs(self.analyzer_spam.probability(document)), 0.9)
+                     * self.weights[BayesFilter.KEY_WORD_FREQ][BayesFilter.SPAM])
 
         subject = self.subject_ok.scan(email.headers["subject"])
-        p_subject_ok = self.subject_ok.probability(subject)
-        p_subject_spam = self.subject_spam.probability(subject)
+        p_subject_ok = (self.subject_ok.probability(subject)
+                        * self.weights[BayesFilter.KEY_SUBJECT][BayesFilter.OK])
+        p_subject_spam = (self.subject_spam.probability(subject)
+                          * self.weights[BayesFilter.KEY_SUBJECT][BayesFilter.SPAM])
 
         # todo do senders later
-        p_senders_ok = self.senders_ok.test_sender(email.headers) * (-p_wf_ok / 5)
-        p_senders_spam = self.senders_spam.test_sender(email.headers) * (-p_wf_spam / 5)
+        p_senders_ok = (self.senders_ok.test_sender(email.headers) * (-p_wf_ok / 5)
+                        * self.weights[BayesFilter.KEY_SENDERS][BayesFilter.OK])
+        p_senders_spam = (self.senders_spam.test_sender(email.headers) * (-p_wf_spam / 5)
+                          * self.weights[BayesFilter.KEY_SENDERS][BayesFilter.SPAM])
 
         email_vec = Vectorizer.calc(email)
 
-        p_prop_ok = self.vec_ok.distribute(email_vec).sumlog()
-        p_prop_spam = self.vec_spam.distribute(email_vec).sumlog()
+        p_prop_ok = (self.vec_ok.distribute(email_vec).sumlog()
+                     * self.weights[BayesFilter.KEY_PROP_ANALYSIS][BayesFilter.OK])
+        p_prop_spam = (self.vec_spam.distribute(email_vec).sumlog()
+                       * self.weights[BayesFilter.KEY_PROP_ANALYSIS][BayesFilter.SPAM])
 
-        result_ok = p_init_ok + p_wf_ok + p_subject_ok + p_prop_ok + p_senders_ok
-        result_spam = p_init_spam + p_wf_spam + p_subject_spam + p_prop_spam + p_senders_spam
+        result_ok = (p_init_ok + p_wf_ok + p_subject_ok + p_prop_ok + p_senders_ok
+                     * self.weights[BayesFilter.KEY_RESULT][BayesFilter.OK])
+        result_spam = (p_init_spam + p_wf_spam + p_subject_spam + p_prop_spam + p_senders_spam
+                       * self.weights[BayesFilter.KEY_RESULT][BayesFilter.SPAM])
 
         return "SPAM" if result_spam > result_ok else "OK", {
             BayesFilter.KEY_WORD_FREQ: (p_wf_ok, p_wf_spam),

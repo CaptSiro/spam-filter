@@ -42,6 +42,6 @@ class BinaryConfusionMatrix:
     def compute_from_dicts(self, truth_dict, prediction_dict):
         with open("./true.txt", "w", encoding="utf-8") as tp:
             for key, truth in truth_dict.items():
-                if truth != prediction_dict[key]:
-                    tp.write(f"{key} {truth} {prediction_dict[key]}\n")
+                if truth != prediction_dict[key] and prediction_dict[key] == "OK":
+                    tp.write(f"{key}\t{truth}\t{prediction_dict[key]}\n")
                 self.update(truth, prediction_dict[key])

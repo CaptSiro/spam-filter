@@ -26,16 +26,22 @@ def print_stats(f, test_dir: str) -> None:
     print(matrix)
 
 def main():
-    # sf_corpus.Corpus.random_corpus("./corpus")
-    train_dir = "./1/"
-    # train_dir = "./corpus/train/"
-    test_dir = "./2/"
-    # test_dir = "./corpus/test/"
+    sf_corpus.Corpus.random_corpus("./corpus")
+    # train_dir = "./1/"
+    train_dir = "./corpus/train/"
+    # test_dir = "./2/"
+    test_dir = "./corpus/test/"
 
     print(f"Training on directory: {train_dir}")
     print(f"Testing on directory: {test_dir}")
 
     f = filter.MyFilter()
+    time_fn(f.train, train_dir)
+    f.test(test_dir)
+
+    print_stats(f, test_dir)
+
+    f = filter.BayesFilter()
     time_fn(f.train, train_dir)
     f.test(test_dir)
 

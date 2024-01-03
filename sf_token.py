@@ -189,3 +189,17 @@ class HTMLContent(HTMLParser):
         self.text_contents = []
         self.feed(data)
         return self.text_contents
+
+
+class HTMLCommentCounter(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.comments = 0
+
+    def handle_comment(self, data):
+        self.comments += 1
+
+    def count(self, data):
+        self.comments = 0
+        self.feed(data)
+        return self.comments

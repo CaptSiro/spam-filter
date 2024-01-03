@@ -7,7 +7,7 @@ import utils
 
 class Vectorizer:
     class Vec:
-        PROP_COUNT = 7
+        PROP_COUNT = 10
         def __init__(self, props, weight):
             self.props = props
             self.weight = weight
@@ -22,6 +22,7 @@ class Vectorizer:
 
     html_content = sf_token.HTMLContent()
     link_counter = sf_token.HTMLLinkCounter()
+    comment_counter = sf_token.HTMLCommentCounter()
     price_re = re.compile(r"($[0-9,]+)")
 
     def __init__(self):
@@ -56,13 +57,16 @@ class Vectorizer:
 
     @staticmethod
     def calc(email: Email, weight=1) -> "Vectorizer.Vec":
-        content = " ".join(Vectorizer.html_content.extract(email.le_contante))
+        content = email.headers.get("subject", "") + " ".join(Vectorizer.html_content.extract(email.le_contante))
         capitalised = sum((1 for _ in sf_token.t(content, lambda w: str(w).upper() == str(w))))
         nonsense = sum(1 for _ in sf_token.t(content, lambda w: sf_token.is_nonsense(w)))
         non_ascii = sum(1 for char in content if ord(char) > 255)
+        numbers = sum(1 for char in content if ord('0') <= ord(char) <= ord('9'))
         length = len(content)
         links = Vectorizer.link_counter.count(content)
         exclamations = content.count('!')
         headers = len(email.headers)
+        custom_headers = sum(1 for header in email.headers if str(header).startswith("x-"))
+        comments = Vectorizer.comment_counter.count(content)
 
-        return Vectorizer.Vec([headers, capitalised, non_ascii, nonsense, length, links, exclamations], weight)
+        return Vectorizer.Vec([comments, headers, custom_headers, capitalised, non_ascii, numbers, nonsense, length, links, exclamations], weight)
