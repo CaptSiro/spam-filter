@@ -314,10 +314,11 @@ class BayesFilter:
         p_wf_ok, p_wf_spam = values[BayesFilter.KEY_WORD_FREQ]
         p_prop_ok, p_prop_spam = values[BayesFilter.KEY_PROP_ANALYSIS]
         p_subject_ok, p_subject_spam = values[BayesFilter.KEY_SUBJECT]
+        p_senders_ok, p_senders_spam = values[BayesFilter.KEY_SENDERS]
         result_ok, result_spam = values[BayesFilter.KEY_RESULT]
 
-        print("\tP(OK)   = %-8.3f + %-8.3f + %-8.3f + %-8.3f = %-8.3f" % (p_init_ok, p_wf_ok, p_subject_ok, p_prop_ok, result_ok))
-        print("\tP(SPAM) = %-8.3f + %-8.3f + %-8.3f + %-8.3f = %-8.3f" % (p_init_spam, p_wf_spam, p_subject_spam, p_prop_spam, result_spam))
+        print("\tP(OK)   = %-8.3f + %-8.3f + %-8.3f + %-8.3f + %-8.3f = %-8.3f" % (p_init_ok, p_wf_ok, p_subject_ok, p_prop_ok, p_senders_ok, result_ok))
+        print("\tP(SPAM) = %-8.3f + %-8.3f + %-8.3f + %-8.3f + %-8.3f = %-8.3f" % (p_init_spam, p_wf_spam, p_subject_spam, p_prop_spam, p_senders_spam, result_spam))
 
     def train(self, directory):
         spec = utils.read_classification_from_file(os.path.join(directory, "!truth.txt"))
@@ -331,9 +332,9 @@ class BayesFilter:
 
         self.save_state()
         for file, email in corpus.parse_partition(validation):
-            print(file)
+            # print(file)
             prediction, values = self.predict(file, email)
-            self.print_predict_parts(values)
+            # self.print_predict_parts(values)
 
         # for _ in range(10):
         #     percentage = self.validate_training(corpus, validation, spec)
@@ -369,24 +370,20 @@ class BayesFilter:
         p_subject_spam = self.subject_spam.probability(subject)
 
         # todo do senders later
-        # senders = self.senders.test_sender(email.headers) * self.weights[BayesFilter.KEY_SENDERS]
+        p_senders_ok = self.senders_ok.test_sender(email.headers) * (-p_wf_ok / 5)
+        p_senders_spam = self.senders_spam.test_sender(email.headers) * (-p_wf_spam / 5)
 
         email_vec = Vectorizer.calc(email)
 
         p_prop_ok = self.vec_ok.distribute(email_vec).sumlog()
         p_prop_spam = self.vec_spam.distribute(email_vec).sumlog()
 
-        # if p_wf_ok == 0:
-        #     print(self.analyzer_ok.vec(email.le_contante).keys(), self.analyzer_ok.state_vec.keys())
-        # if p_wf_spam == 0:
-        #     print(self.analyzer_spam.vec(email.le_contante).keys(), self.analyzer_spam.state_vec.keys())
-
-        result_ok = p_init_ok + p_wf_ok + p_subject_ok + p_prop_ok
-        result_spam = p_init_spam + p_wf_spam + p_subject_spam + p_prop_spam
+        result_ok = p_init_ok + p_wf_ok + p_subject_ok + p_prop_ok + p_senders_ok
+        result_spam = p_init_spam + p_wf_spam + p_subject_spam + p_prop_spam + p_senders_spam
 
         return "SPAM" if result_spam > result_ok else "OK", {
             BayesFilter.KEY_WORD_FREQ: (p_wf_ok, p_wf_spam),
-            BayesFilter.KEY_SENDERS: (0.5, 0.5),
+            BayesFilter.KEY_SENDERS: (p_senders_ok, p_senders_spam),
             BayesFilter.KEY_SUBJECT: (p_subject_ok, p_subject_spam),
             BayesFilter.KEY_PROP_ANALYSIS: (p_prop_ok, p_prop_spam),
             BayesFilter.KEY_RESULT: (result_ok, result_spam)
