@@ -303,15 +303,8 @@ class BayesFilter:
             self.save_email(email, is_ok)
             self.types.scan(spec[file])
 
-        # for file, email in corpus.parse_partition(validation):
-        #     # print(file)
-        #     prediction, values = self.predict(file, email)
-        #     # self.print_predict_parts(values)
-
         for _ in range(10):
             percentage = self.validate_training(corpus, validation, spec)
-            print(percentage)
-            print(self.weights)
             if percentage > 0.98:
                 break
 
@@ -347,7 +340,6 @@ class BayesFilter:
         p_subject_spam = (self.subject_spam.probability(subject)
                           * self.weights[BayesFilter.KEY_SUBJECT][BayesFilter.SPAM])
 
-        # todo do senders later
         p_senders_ok = (self.senders_ok.test_sender(email.headers) * (-p_wf_ok / 5)
                         * self.weights[BayesFilter.KEY_SENDERS][BayesFilter.OK])
         p_senders_spam = (self.senders_spam.test_sender(email.headers) * (-p_wf_spam / 5)
